@@ -1,0 +1,26 @@
+# Normalise line endings so the repo behaves the same on Windows, macOS and Linux.
+* text=auto eol=lf
+
+# Shell scripts MUST stay LF. With CRLF, bash fails with "\r: command not found",
+# which breaks every npm script on a fresh Windows clone.
+*.sh text eol=lf
+scripts/* text eol=lf
+
+# Windows-only files keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Never touch binaries.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Collapse lockfile noise in diffs and reviews.
+package-lock.json linguist-generated=true -diff
+uv.lock linguist-generated=true -diff

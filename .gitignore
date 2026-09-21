@@ -1,0 +1,41 @@
+# Secrets
+.env
+.env.*
+!.env.example
+secrets/
+kubeconfig
+*.kubeconfig
+*.pem
+*.key
+.npmrc
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Runtime output
+*.log
+crew/output/
+crew/export.json
+tunnel-url.txt

@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.test.ts","./src/api.ts","./src/device.test.ts","./src/device.ts","./src/main.tsx","./src/components/barchart.test.tsx","./src/components/barchart.tsx","./src/hooks/usepolling.ts","./src/pages/admin.tsx","./src/pages/audience.tsx","./src/pages/home.tsx","./src/pages/presenter.tsx","./src/test/setup.ts","./vite.config.ts"],"version":"5.9.3"}

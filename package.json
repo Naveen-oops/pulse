@@ -1,0 +1,45 @@
+{
+  "name": "pulse",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pulse — live audience app (polls, Q&A, CrewAI session report)",
+  "type": "module",
+  "workspaces": [
+    "packages/web"
+  ],
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "setup": "node scripts/run.mjs setup",
+
+    "dev": "concurrently -n poll,qa,web -c blue,magenta,green -k \"npm:poll-service\" \"npm:qa-service\" \"npm:web\"",
+    "web": "node scripts/run.mjs web",
+    "poll-service": "node scripts/run.mjs poll-service",
+    "qa-service": "node scripts/run.mjs qa-service",
+    "crew": "node scripts/run.mjs crew",
+
+    "db:up": "node scripts/run.mjs db up",
+    "db:down": "node scripts/run.mjs db down",
+    "db:reset": "node scripts/run.mjs db reset",
+    "db:status": "node scripts/run.mjs db status",
+    "seed": "node scripts/run.mjs seed",
+    "seed:reset": "node scripts/run.mjs seed --reset",
+
+    "test": "node scripts/run.mjs test",
+    "test:py": "node scripts/run.mjs test python",
+    "test:web": "node scripts/run.mjs test web",
+    "lint": "node scripts/run.mjs lint",
+    "format": "node scripts/run.mjs lint --fix",
+    "typecheck": "npm run typecheck -w pulse-web",
+    "verify": "node scripts/run.mjs verify",
+    "build": "npm run build -w pulse-web",
+
+    "doctor": "node scripts/run.mjs doctor",
+    "clean": "node scripts/run.mjs clean",
+    "help": "node scripts/run.mjs help"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,29 @@
+# Stateful services only — the things that must exist before development starts.
+# The application services run on the host with hot reload (npm run dev).
+#
+#   npm run db:up | db:down | db:reset
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pulse-postgres
+    restart: unless-stopped
+    environment:
+      # Local development credentials. Never used outside this file.
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: pulse
+      POSTGRES_DB: pulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pulse-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulse -d pulse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  pulse-pgdata:
+    name: pulse-pgdata
