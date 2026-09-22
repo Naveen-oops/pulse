@@ -38,6 +38,22 @@ export interface RoomExport {
   polls: Results[]
 }
 
+export interface Question {
+  id: number
+  room_code: string
+  text: string
+  vote_count: number
+  is_hidden: boolean
+  is_answered: boolean
+  created_at: string
+}
+
+export interface QuestionExport {
+  room_code: string
+  exported_at: string
+  questions: Question[]
+}
+
 /** An error the API reported, carrying the message meant for the audience. */
 export class ApiError extends Error {
   readonly status: number
@@ -50,6 +66,7 @@ export class ApiError extends Error {
 }
 
 const POLLS = '/api/polls'
+const QA = '/api/qa'
 
 async function readErrorMessage(response: Response): Promise<string> {
   try {
@@ -128,4 +145,38 @@ export function setPollOpen(pollId: number, isOpen: boolean, token: string): Pro
     headers: presenterHeaders(token),
     body: JSON.stringify({ is_open: isOpen }),
   })
+}
+
+export function listQuestions(code: string): Promise<Question[]> {
+  return request<Question[]>(`${QA}/rooms/${encodeURIComponent(code)}/questions`)
+}
+
+export function postQuestion(code: string, text: string, deviceId: string): Promise<Question> {
+  return request<Question>(`${QA}/rooms/${encodeURIComponent(code)}/questions`, {
+    method: 'POST',
+    body: JSON.stringify({ text, device_id: deviceId }),
+  })
+}
+
+export function upvoteQuestion(questionId: number, deviceId: string): Promise<Question> {
+  return request<Question>(`${QA}/questions/${questionId}/votes`, {
+    method: 'POST',
+    body: JSON.stringify({ device_id: deviceId }),
+  })
+}
+
+export function updateQuestion(
+  questionId: number,
+  patch: { is_hidden?: boolean; is_answered?: boolean },
+  token: string,
+): Promise<Question> {
+  return request<Question>(`${QA}/questions/${questionId}`, {
+    method: 'PATCH',
+    headers: presenterHeaders(token),
+    body: JSON.stringify(patch),
+  })
+}
+
+export function getQuestionExport(code: string): Promise<QuestionExport> {
+  return request<QuestionExport>(`${QA}/rooms/${encodeURIComponent(code)}/questions/export`)
 }

@@ -4,6 +4,10 @@ import {
   getDeviceId,
   getPresenterToken,
   getVotedOption,
+  hasUpvotedQuestion,
+  isOwnQuestion,
+  markQuestionAsked,
+  markQuestionUpvoted,
   markVoted,
   setPresenterToken,
 } from './device'
@@ -59,5 +63,19 @@ describe('remembering votes', () => {
     markVoted(2, 3)
     expect(getVotedOption(1)).toBe(0)
     expect(getVotedOption(2)).toBe(3)
+  })
+})
+
+describe('remembering questions this device asked or upvoted', () => {
+  it('marks a question as this device asked', () => {
+    markQuestionAsked(12)
+    expect(isOwnQuestion(12)).toBe(true)
+    expect(isOwnQuestion(13)).toBe(false)
+  })
+
+  it('marks a question as already upvoted', () => {
+    markQuestionUpvoted(8)
+    expect(hasUpvotedQuestion(8)).toBe(true)
+    expect(hasUpvotedQuestion(9)).toBe(false)
   })
 })
