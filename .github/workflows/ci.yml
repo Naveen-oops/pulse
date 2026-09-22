@@ -27,8 +27,14 @@ jobs:
       poll-service: ${{ steps.filter.outputs.poll-service }}
       qa-service: ${{ steps.filter.outputs.qa-service }}
       web: ${{ steps.filter.outputs.web }}
+      owner: ${{ steps.owner.outputs.lc }}
     steps:
       - uses: actions/checkout@v4
+
+      # Container registries reject uppercase in a repository path, and
+      # github.repository_owner preserves the account's original case.
+      - id: owner
+        run: echo "lc=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -178,8 +184,8 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pulse-${{ matrix.package }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pulse-${{ matrix.package }}:latest
+            ${{ env.REGISTRY }}/${{ needs.changes.outputs.owner }}/pulse-${{ matrix.package }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ needs.changes.outputs.owner }}/pulse-${{ matrix.package }}:latest
           # Registry cache keeps rebuilds inside the 4-minute budget.
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -210,7 +216,7 @@ jobs:
       - name: Point the demo overlay at the new images
         working-directory: deploy/overlays/demo
         env:
-          OWNER: ${{ github.repository_owner }}
+          OWNER: ${{ needs.changes.outputs.owner }}
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
