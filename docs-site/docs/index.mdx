@@ -1,0 +1,116 @@
+---
+slug: /
+title: Build Smarter
+description: Ship a real app with a coding agent — and learn why each piece exists.
+hide_title: true
+---
+
+# Build Smarter
+
+You are going to take a working app called **Pulse** — live audience polls, the kind
+you have voted in at a conference — and add a real feature to it **on stage, with a
+coding agent**, then watch it deploy itself.
+
+By the end you will have done the whole loop:
+
+> write a spec → let an agent implement it → **review what it actually did** →
+> merge → watch GitOps roll it out
+
+The reviewing step is the one that matters. Everything else is plumbing you can learn
+once. Knowing what to look for in code you did not type is the durable skill.
+
+## What Pulse is
+
+Three screens over two small APIs and one database:
+
+```mermaid
+flowchart LR
+  phone["📱 Audience<br/>/r/CIT22A"] --> ing{{Ingress}}
+  laptop["🖥️ Presenter<br/>/present/CIT22A"] --> ing
+  ing -->|"/api/polls"| poll["poll-service<br/>FastAPI"]
+  ing -->|"/api/qa"| qa["qa-service<br/>FastAPI"]
+  ing -->|"/"| web["web<br/>React + Vite"]
+  poll --> db[("PostgreSQL")]
+  qa --> db
+```
+
+`poll-service` is finished. `qa-service` answers exactly one endpoint — `/healthz` —
+and nothing else. **That gap is the exercise.**
+
+:::info[Why this matters]
+`qa-service` already exists on `main` as a deployed hello-world, with its Dockerfile,
+CI job, Kubernetes manifest and ingress route in place. So when the agent writes the
+Q&A feature, it writes *feature logic only* — no plumbing, no new infrastructure.
+
+That is a deliberate setup choice, and it is most of why a live build can finish in
+fifteen minutes instead of failing in forty. Give an agent a narrow, well-fenced hole
+to fill and it does well. Ask it to invent your architecture live and it will not.
+:::
+
+## How to read this
+
+Every page answers **what to type** and **why it is that way**. If you only want it
+running, follow the commands. If you want to actually learn something, read the
+callouts — that is where the reasoning lives.
+
+<div className="cards">
+  <a className="card-link" href="/setup">
+    <div className="card-link__step">STEP 1</div>
+    <div className="card-link__title">Set up your machine</div>
+    <p className="card-link__body">One command. Then we pull it apart and look at what it did to your laptop.</p>
+  </a>
+  <a className="card-link" href="/tour">
+    <div className="card-link__step">STEP 2</div>
+    <div className="card-link__title">Tour the app</div>
+    <p className="card-link__body">Vote from your phone. Watch the presenter chart move. Find the missing feature.</p>
+  </a>
+  <a className="card-link" href="/concepts/polling">
+    <div className="card-link__step">STEP 3</div>
+    <div className="card-link__title">Why it is built this way</div>
+    <p className="card-link__body">Four decisions with real trade-offs — including two that look wrong until you hear the reason.</p>
+  </a>
+  <a className="card-link" href="/kubernetes/containers">
+    <div className="card-link__step">STEP 4</div>
+    <div className="card-link__title">Ship it</div>
+    <p className="card-link__body">Containers, a local Kubernetes cluster, and a commit that deploys itself.</p>
+  </a>
+  <a className="card-link" href="/agentic/rules">
+    <div className="card-link__step">STEP 5</div>
+    <div className="card-link__title">Agentic engineering</div>
+    <p className="card-link__body">Constrain the agent, hand it a spec, build the feature, then review it properly.</p>
+  </a>
+  <a className="card-link" href="/reference/commands">
+    <div className="card-link__step">REFERENCE</div>
+    <div className="card-link__title">Every command</div>
+    <p className="card-link__body">The full list, plus what to do when something breaks.</p>
+  </a>
+</div>
+
+## What you need
+
+| Thing | Why | Required? |
+| --- | --- | --- |
+| Node 18.18+ | Runs the tooling and the web app | Yes |
+| Git | You are going to commit things | Yes |
+| Docker Desktop | PostgreSQL, container images, the cluster | Yes for the Kubernetes parts |
+| A coding agent | Cursor, Claude Code, Copilot — any agent mode | For step 5 |
+| Python | **Not needed.** Setup downloads its own. | No |
+
+That last row is not a typo. `npm run setup` fetches a managed CPython 3.12 into the
+project and never touches your system Python. If you have Python 3.8 from years ago,
+it stays exactly where it is.
+
+## If you are using a coding agent to follow along
+
+That is encouraged — it is the point of the session. Two things make it work better:
+
+1. **Point your agent at `AGENTS.md` in the repo root first.** It states the stack, the
+   test commands, and the rules. Agents follow a written constraint far more reliably
+   than a remembered one.
+2. **Ask for a test with every change.** "Add the rate limit" gets you a rate limit.
+   "Add the rate limit and a test for it" gets you both, and the test is how you check
+   the first part is real.
+
+---
+
+Ready? **[Set up your machine →](/setup)**

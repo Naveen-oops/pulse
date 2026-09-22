@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Docusaurus generated
+.docusaurus/
+build/
+
+# Editors / OS
+.DS_Store
+*.swp
+
+# Env
+.env
+.env.local
+
+*.log
+npm-debug.log*

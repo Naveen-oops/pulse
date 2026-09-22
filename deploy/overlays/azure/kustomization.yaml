@@ -1,0 +1,57 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulse
+
+resources:
+  - ../../base
+
+# The `images:` block is written by `npm run azure up`, which runs:
+#
+#   kustomize edit set image pulse/poll-service=<acr>.azurecr.io/pulse-poll-service:<tag>
+#
+# It starts empty so there is no stale registry name committed. The ACR name is
+# globally unique and generated at provision time, so it cannot be hardcoded.
+
+# PostgreSQL runs in-cluster, from the same base manifests as the local kind
+# cluster. That is deliberate: identical manifests in both places is the whole
+# GitOps lesson, and it costs nothing extra on AKS.
+#
+# For anything beyond a two-day demo, swap to Azure Database for PostgreSQL
+# Flexible Server and point the secret at it — the app needs no code change,
+# only a different PULSE_DATABASE_URL.
+
+# Secrets come from the cluster, NOT from git:
+#
+#   kubectl -n pulse create secret generic pulse-db \
+#     --from-literal=username=pulse \
+#     --from-literal=password="$(openssl rand -base64 24)" \
+#     --from-literal=poll-service-url="postgresql://pulse:<pw>@postgres:5432/pulse" \
+#     --from-literal=qa-service-url="postgresql://pulse:<pw>@postgres:5432/pulse"
+#
+#   kubectl -n pulse create secret generic pulse-app \
+#     --from-literal=presenter-token="$(openssl rand -hex 16)"
+#
+# ArgoCD never prunes them, because they are not in the repo.
+
+patches:
+  # The audience reaches this over a public IP or hostname, so the browser's
+  # origin is not localhost. Requests still go same-origin through the ingress,
+  # but keep CORS permissive so a phone is never blocked.
+  - target:
+      kind: ConfigMap
+      name: pulse-config
+    patch: |-
+      - op: replace
+        path: /data/cors-origins
+        value: "*"
+
+  # A single AKS node is the whole cluster on a demo budget, so keep requests
+  # small enough that everything schedules alongside ingress-nginx and ArgoCD.
+  - target:
+      kind: Deployment
+      name: postgres
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 25m

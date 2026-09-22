@@ -409,7 +409,7 @@ EOF
       # Substitute the real repo URL at apply time, so the committed manifest
       # never carries a stale placeholder.
       info "Applying the Application with repoURL=$remote"
-      sed "s|https://github.com/OWNER/Pulse.git|${remote}|" deploy/argocd/app.yaml         | kubectl apply -f -
+      sed "s|https://github.com/Naveen-oops/Pulse.git|${remote}|" deploy/argocd/app.yaml         | kubectl apply -f -
 
       step "🔑 Admin password"
       printf '   %s' "$DIM"
@@ -470,6 +470,284 @@ cmd_tunnel() {
   info "The *.trycloudflare.com URL it prints is what the QR code should point at"
   warn "Quick tunnels are ephemeral — the URL changes every restart"
   exec cloudflared tunnel --url "$target"
+}
+
+# ============================================================================
+#  azure — AKS deployment for audience participation
+# ============================================================================
+#
+# Everything lands in ONE resource group so teardown is one command. That is the
+# only cost control that actually works:  npm run azure:down
+#
+# Cost for a two-day session, in the region below:
+#   AKS control plane (Free tier)   $0
+#   1x Standard_B2s node            ~$0.04/hr  -> ~$2 for 48h
+#   ACR Basic                       ~$0.17/day -> ~$0.34
+#   PostgreSQL (in-cluster)         $0
+# A new Azure account's $200 credit covers this many times over.
+
+AZ_RESOURCE_GROUP="${AZ_RESOURCE_GROUP:-rg-pulse-demo}"
+AZ_LOCATION="${AZ_LOCATION:-centralindia}"
+AZ_AKS_NAME="${AZ_AKS_NAME:-pulse-aks}"
+AZ_NODE_SIZE="${AZ_NODE_SIZE:-Standard_B2s}"
+AZ_NODE_COUNT="${AZ_NODE_COUNT:-1}"
+
+# Azure CLI is installed by an MSI that may not be on this shell's PATH yet.
+find_az() {
+  if command -v az >/dev/null 2>&1; then command -v az; return 0; fi
+  local msi="/c/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd"
+  if [ -f "$msi" ]; then echo "$msi"; return 0; fi
+  return 1
+}
+
+require_az() {
+  local az_bin
+  az_bin="$(find_az)" || die "Azure CLI not found.
+   👉 winget install --id Microsoft.AzureCLI -e --source winget"
+  if ! "$az_bin" account show >/dev/null 2>&1; then
+    die "Not logged in to Azure, or the cached credential is stale.
+   👉 Run: az login"
+  fi
+  echo "$az_bin"
+}
+
+# ACR names are globally unique and alphanumeric only, so one is derived from
+# the subscription id rather than guessed.
+acr_name_for() {
+  local az_bin="$1" sub
+  sub="$("$az_bin" account show --query id -o tsv 2>/dev/null | tr -d '-' | tail -c 8)"
+  echo "${AZ_ACR_NAME:-pulseacr${sub}}"
+}
+
+cmd_azure() {
+  local action="${1:-status}"
+  local AZ; AZ="$(require_az)"
+  local ACR; ACR="$(acr_name_for "$AZ")"
+
+  case "$action" in
+    up)
+      banner "☁️  Deploying Pulse to AKS"
+      local sub_name
+      sub_name="$("$AZ" account show --query name -o tsv)"
+      ok "subscription: $sub_name"
+      note "resource group: $AZ_RESOURCE_GROUP · region: $AZ_LOCATION"
+      info "Everything goes in one resource group. 'npm run azure:down' deletes all of it."
+
+      step "📋 Registering resource providers"
+      for provider in Microsoft.ContainerService Microsoft.ContainerRegistry; do
+        local state
+        state="$("$AZ" provider show -n "$provider" --query registrationState -o tsv 2>/dev/null || echo NotRegistered)"
+        if [ "$state" = "Registered" ]; then
+          ok "$provider"
+        else
+          info "$provider is $state — registering (can take a few minutes)"
+          "$AZ" provider register -n "$provider" --wait
+          ok "$provider registered"
+        fi
+      done
+
+      step "📦 Creating the resource group"
+      "$AZ" group create -n "$AZ_RESOURCE_GROUP" -l "$AZ_LOCATION" --output none
+      ok "$AZ_RESOURCE_GROUP in $AZ_LOCATION"
+
+      step "🗄️  Creating the container registry"
+      if "$AZ" acr show -n "$ACR" -g "$AZ_RESOURCE_GROUP" >/dev/null 2>&1; then
+        ok "$ACR already exists"
+      else
+        "$AZ" acr create -n "$ACR" -g "$AZ_RESOURCE_GROUP" --sku Basic --output none \
+          || die "Could not create the registry. The name '$ACR' may be taken globally.
+   👉 Set a different one: AZ_ACR_NAME=<name> npm run azure:up"
+        ok "$ACR.azurecr.io"
+      fi
+
+      step "🐳 Building images in the cloud"
+      info "az acr build compiles inside Azure — no local Docker push, no slow upload"
+      "$AZ" acr build -r "$ACR" -t "pulse-poll-service:latest" packages/poll-service --output none
+      ok "pulse-poll-service"
+      "$AZ" acr build -r "$ACR" -t "pulse-qa-service:latest" packages/qa-service --output none
+      ok "pulse-qa-service"
+      # web builds from the repo root: the npm workspace lockfile lives there.
+      "$AZ" acr build -r "$ACR" -t "pulse-web:latest" -f packages/web/Dockerfile . --output none
+      ok "pulse-web"
+
+      step "☸️  Creating the AKS cluster"
+      if "$AZ" aks show -n "$AZ_AKS_NAME" -g "$AZ_RESOURCE_GROUP" >/dev/null 2>&1; then
+        ok "$AZ_AKS_NAME already exists"
+      else
+        info "$AZ_NODE_COUNT x $AZ_NODE_SIZE, Free control plane — this takes 5-10 minutes"
+        "$AZ" aks create \
+          -n "$AZ_AKS_NAME" -g "$AZ_RESOURCE_GROUP" \
+          --tier free \
+          --node-count "$AZ_NODE_COUNT" \
+          --node-vm-size "$AZ_NODE_SIZE" \
+          --attach-acr "$ACR" \
+          --no-ssh-key \
+          --output none \
+        || die "AKS creation failed.
+   👉 Often a quota limit on a new subscription. Check with:
+      az vm list-usage -l $AZ_LOCATION -o table | grep -i vcpu"
+        ok "$AZ_AKS_NAME created"
+      fi
+
+      step "🔑 Fetching kubectl credentials"
+      "$AZ" aks get-credentials -n "$AZ_AKS_NAME" -g "$AZ_RESOURCE_GROUP" --overwrite-existing
+      ok "kubectl context is now $AZ_AKS_NAME"
+      warn "Your kubectl context changed — 'kubectl config use-context kind-pulse' to go back"
+
+      step "🌐 Installing ingress-nginx (cloud LoadBalancer)"
+      run kubectl apply -f \
+        "https://raw.githubusercontent.com/kubernetes/ingress-nginx/${INGRESS_NGINX_VERSION}/deploy/static/provider/cloud/deploy.yaml"
+      printf '   %s⏳ waiting for the controller%s\n' "$DIM" "$RESET"
+      kubectl wait --namespace ingress-nginx \
+        --for=condition=ready pod \
+        --selector=app.kubernetes.io/component=controller \
+        --timeout=300s || die "ingress-nginx did not become ready.
+   👉 kubectl -n ingress-nginx get pods"
+      ok "ingress-nginx ready"
+
+      step "🔐 Creating secrets in the cluster (never in git)"
+      kubectl create namespace pulse --dry-run=client -o yaml | kubectl apply -f -
+      if kubectl -n pulse get secret pulse-db >/dev/null 2>&1; then
+        ok "secrets already exist — leaving them alone"
+      else
+        local pg_pass presenter_token
+        pg_pass="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
+        presenter_token="$(openssl rand -hex 16)"
+        kubectl -n pulse create secret generic pulse-db \
+          --from-literal=username=pulse \
+          --from-literal=password="$pg_pass" \
+          --from-literal=poll-service-url="postgresql://pulse:${pg_pass}@postgres:5432/pulse" \
+          --from-literal=qa-service-url="postgresql://pulse:${pg_pass}@postgres:5432/pulse"
+        kubectl -n pulse create secret generic pulse-app \
+          --from-literal=presenter-token="$presenter_token"
+        ok "generated a random database password and presenter token"
+        printf '\n   %s🔑 PRESENTER TOKEN: %s%s%s\n\n' "$CYAN$BOLD" "$presenter_token" "$RESET" ""
+        info "Write that down — it is only shown once. Retrieve it later with:"
+        note "kubectl -n pulse get secret pulse-app -o jsonpath='{.data.presenter-token}' | base64 -d"
+      fi
+
+      step "🚀 Pointing the overlay at the registry and deploying"
+      # kubectl renders kustomize but has no `kustomize edit`, so the images
+      # block is written directly rather than adding a second binary.
+      _write_azure_images "$ACR"
+      run kubectl apply -k deploy/overlays/azure
+
+      printf '   %s⏳ waiting for rollouts%s\n' "$DIM" "$RESET"
+      for deployment in postgres poll-service qa-service web; do
+        kubectl -n pulse rollout status "deployment/$deployment" --timeout=300s \
+          || die "$deployment did not roll out.
+   👉 kubectl -n pulse describe deployment/$deployment"
+      done
+      ok "all four deployments are running"
+
+      step "🌱 Seeding room CIT22A"
+      kubectl -n pulse exec deployment/poll-service -- python -m app.seed 2>/dev/null \
+        | sed 's/^/   🌱 /' || warn "Seeding failed — retry with 'npm run azure:seed'"
+
+      cmd_azure url
+      ;;
+
+    url)
+      step "🌍 Public address"
+      local ip
+      ip="$(kubectl -n ingress-nginx get service ingress-nginx-controller \
+        -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)"
+      if [ -z "$ip" ]; then
+        warn "The LoadBalancer has no external IP yet — Azure usually takes 1-3 minutes"
+        hint "Watch it: kubectl -n ingress-nginx get svc ingress-nginx-controller -w"
+        return 0
+      fi
+      done_banner "Pulse is live."
+      cat <<EOF
+  ${BOLD}Share with the audience${RESET}
+    ${CYAN}http://${ip}/r/CIT22A${RESET}
+
+  ${BOLD}For you${RESET}
+    presenter  http://${ip}/present/CIT22A
+    admin      http://${ip}/admin
+
+  ${BOLD}When the session is over${RESET}
+    ${CYAN}npm run azure:down${RESET}   ${DIM}deletes the whole resource group${RESET}
+
+EOF
+      ;;
+
+    seed)
+      kubectl -n pulse exec deployment/poll-service -- python -m app.seed "${@:2}" \
+        | sed 's/^/   🌱 /'
+      ok "seeded"
+      ;;
+
+    status)
+      banner "☁️  Azure status"
+      if ! "$AZ" group exists -n "$AZ_RESOURCE_GROUP" --output tsv | grep -q true; then
+        info "Resource group '$AZ_RESOURCE_GROUP' does not exist"
+        hint "npm run azure:up"
+        return 0
+      fi
+      step "Resources in $AZ_RESOURCE_GROUP"
+      "$AZ" resource list -g "$AZ_RESOURCE_GROUP" \
+        --query "[].{name:name,type:type,location:location}" -o table 2>&1 || true
+      step "Cluster"
+      kubectl -n pulse get pods -o wide 2>&1 || info "kubectl is not pointed at AKS"
+      cmd_azure url
+      ;;
+
+    cost)
+      step "💰 What is running, and roughly what it costs"
+      "$AZ" resource list -g "$AZ_RESOURCE_GROUP" --query "[].{name:name,type:type}" -o table 2>&1 || true
+      cat <<EOF
+
+   ${DIM}AKS control plane (Free tier)   \$0
+   ${AZ_NODE_COUNT}x ${AZ_NODE_SIZE}                  ~\$0.04/hr each
+   ACR Basic                       ~\$0.17/day
+   PostgreSQL (in-cluster)         \$0${RESET}
+
+   ${BOLD}Billing is per-second while it exists. 'npm run azure:down' is the off switch.${RESET}
+
+EOF
+      info "Exact figures: https://portal.azure.com -> Cost Management"
+      ;;
+
+    down)
+      banner "🧨 Deleting every Azure resource for Pulse"
+      warn "This deletes resource group '$AZ_RESOURCE_GROUP' and everything in it:"
+      note "the AKS cluster, the registry and its images, the load balancer, and the database"
+      printf '\n   %sType the resource group name to confirm:%s ' "$BOLD" "$RESET"
+      read -r confirm
+      [ "$confirm" = "$AZ_RESOURCE_GROUP" ] || die "Did not match. Nothing was deleted."
+      info "Deleting in the background — Azure takes a few minutes to finish"
+      "$AZ" group delete -n "$AZ_RESOURCE_GROUP" --yes --no-wait
+      ok "deletion started"
+      hint "Confirm it is gone: az group exists -n $AZ_RESOURCE_GROUP"
+      ;;
+
+    *)
+      die "Usage: npm run azure:up | azure:down | azure:status | azure:url | azure:cost" ;;
+  esac
+}
+
+# Writes the images block of the azure overlay. Done in shell because `kubectl
+# kustomize` can render but cannot edit, and we do not want a second binary.
+_write_azure_images() {
+  local acr="$1"
+  local file="deploy/overlays/azure/kustomization.yaml"
+  # Drop any previous images block, then append a fresh one.
+  sed -i '/^images:/,/^$/d' "$file"
+  cat >> "$file" <<EOF
+
+images:
+  - name: pulse/poll-service
+    newName: ${acr}.azurecr.io/pulse-poll-service
+    newTag: latest
+  - name: pulse/qa-service
+    newName: ${acr}.azurecr.io/pulse-qa-service
+    newTag: latest
+  - name: pulse/web
+    newName: ${acr}.azurecr.io/pulse-web
+    newTag: latest
+EOF
+  ok "overlay points at ${acr}.azurecr.io"
 }
 
 # ============================================================================
@@ -592,6 +870,13 @@ cmd_help() {
     npm run images           build images and load them into kind
     npm run tunnel           public HTTPS URL for phones
 
+  ${BOLD}Azure (AKS)${RESET}
+    npm run azure:up         resource group + ACR + AKS + ingress + deploy + seed
+    npm run azure:url        the public URL to share with the audience
+    npm run azure:status     what exists, and the pods
+    npm run azure:cost       what is running and roughly what it costs
+    npm run azure:down       DELETE the whole resource group
+
   ${BOLD}Quality${RESET}
     npm test                 all tests        (test:py, test:web)
     npm run lint             ruff + eslint
@@ -621,6 +906,7 @@ case "$COMMAND" in
   cluster)              cmd_cluster "$@" ;;
   images)               cmd_images "$@" ;;
   tunnel)               cmd_tunnel "$@" ;;
+  azure)                cmd_azure "$@" ;;
   seed)                 cmd_seed "$@" ;;
   test)                 cmd_test "$@" ;;
   lint)                 cmd_lint "$@" ;;

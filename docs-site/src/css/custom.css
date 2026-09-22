@@ -1,0 +1,272 @@
+/**
+ * Pulse docs theme — deliberately the same palette as the app the tutorial
+ * builds, so the docs and the thing being built feel like one project.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Brand */
+  --pulse-indigo: #6c8cff;
+  --pulse-teal: #38d6b0;
+  --pulse-violet: #a48cff;
+
+  --ifm-color-primary: #4a6cf0;
+  --ifm-color-primary-dark: #2f54e4;
+  --ifm-color-primary-darker: #274ad9;
+  --ifm-color-primary-darkest: #1f3cb3;
+  --ifm-color-primary-light: #6c8cff;
+  --ifm-color-primary-lighter: #86a0ff;
+  --ifm-color-primary-lightest: #b3c4ff;
+
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  --ifm-heading-font-weight: 700;
+  --ifm-h1-font-size: 2.6rem;
+  --ifm-line-height-base: 1.7;
+
+  --ifm-code-font-size: 88%;
+  --ifm-code-border-radius: 6px;
+  --ifm-pre-border-radius: 12px;
+
+  --docusaurus-highlighted-code-line-bg: rgb(108 140 255 / 14%);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #8aa3ff;
+  --ifm-color-primary-dark: #6c8cff;
+  --ifm-color-primary-darker: #5b7eff;
+  --ifm-color-primary-darkest: #3a63ff;
+  --ifm-color-primary-light: #a8bbff;
+  --ifm-color-primary-lightest: #cdd8ff;
+
+  --ifm-background-color: #0b1020;
+  --ifm-background-surface-color: #141a30;
+  --ifm-navbar-background-color: rgb(11 16 32 / 82%);
+  --ifm-footer-background-color: #090d1a;
+  --ifm-toc-border-color: #26304f;
+  --ifm-color-emphasis-200: #26304f;
+  --ifm-color-emphasis-300: #333e63;
+
+  --docusaurus-highlighted-code-line-bg: rgb(108 140 255 / 22%);
+}
+
+/* A faint grid, so the dark background has depth instead of being flat black. */
+[data-theme='dark'] body {
+  background-image:
+    radial-gradient(900px 500px at 12% -8%, rgb(108 140 255 / 13%), transparent 60%),
+    radial-gradient(700px 420px at 92% 4%, rgb(56 214 176 / 9%), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* ---------- navbar ---------- */
+
+.navbar {
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid transparent;
+  box-shadow: none;
+}
+
+[data-theme='dark'] .navbar {
+  border-bottom-color: #1e2540;
+}
+
+.navbar__title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- headings ---------- */
+
+.markdown h1 {
+  letter-spacing: -0.035em;
+  background: linear-gradient(100deg, var(--pulse-indigo), var(--pulse-teal));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.markdown h2 {
+  margin-top: 2.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+  letter-spacing: -0.02em;
+}
+
+.markdown h3 {
+  margin-top: 2rem;
+  letter-spacing: -0.015em;
+}
+
+/* ---------- code ---------- */
+
+div[class^='codeBlockContainer'] {
+  box-shadow: 0 10px 30px rgb(0 0 0 / 22%);
+}
+
+[data-theme='dark'] code {
+  background-color: rgb(108 140 255 / 12%);
+  border: 1px solid rgb(108 140 255 / 18%);
+  color: #c9d6ff;
+}
+
+/* ---------- tables ---------- */
+
+.markdown table {
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--ifm-toc-border-color);
+}
+
+.markdown table thead tr {
+  background: linear-gradient(100deg, rgb(108 140 255 / 16%), rgb(56 214 176 / 10%));
+}
+
+.markdown table th,
+.markdown table td {
+  border: none;
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+}
+
+.markdown table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown table tbody tr:nth-child(2n) {
+  background-color: rgb(127 127 127 / 5%);
+}
+
+/* ---------- admonitions ---------- */
+
+.theme-admonition {
+  border-radius: 12px;
+  border-left-width: 4px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 12%);
+}
+
+/* ---------- the "why this matters" callout used across the tutorial ---------- */
+
+.why {
+  position: relative;
+  margin: 1.8rem 0;
+  padding: 1.1rem 1.3rem 1.1rem 1.5rem;
+  border-radius: 12px;
+  border: 1px solid rgb(56 214 176 / 30%);
+  background: linear-gradient(100deg, rgb(56 214 176 / 10%), rgb(108 140 255 / 6%));
+}
+
+.why::before {
+  content: 'WHY THIS MATTERS';
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--pulse-teal);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.why > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- agent-prompt block ---------- */
+
+.agent-prompt {
+  margin: 1.8rem 0;
+  padding: 1.1rem 1.3rem;
+  border-radius: 12px;
+  border: 1px dashed rgb(164 140 255 / 45%);
+  background: rgb(164 140 255 / 8%);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.agent-prompt::before {
+  content: 'PASTE THIS INTO YOUR CODING AGENT';
+  display: block;
+  margin-bottom: 0.6rem;
+  color: var(--pulse-violet);
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+/* ---------- step cards on the landing page ---------- */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.card-link {
+  display: block;
+  padding: 1.2rem 1.3rem;
+  border-radius: 14px;
+  border: 1px solid var(--ifm-toc-border-color);
+  background: var(--ifm-background-surface-color);
+  text-decoration: none !important;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card-link:hover {
+  transform: translateY(-3px);
+  border-color: var(--pulse-indigo);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 26%);
+}
+
+.card-link__step {
+  color: var(--pulse-teal);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+.card-link__title {
+  margin: 0.35rem 0 0.4rem;
+  color: var(--ifm-heading-color);
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.card-link__body {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* ---------- misc ---------- */
+
+.pagination-nav__link {
+  border-radius: 12px;
+  transition: border-color 0.15s ease;
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--pulse-indigo);
+}
+
+.table-of-contents__link--active {
+  font-weight: 600;
+}
+
+.mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 2rem 0;
+}
+
+@media (max-width: 996px) {
+  :root {
+    --ifm-h1-font-size: 2.1rem;
+  }
+}
