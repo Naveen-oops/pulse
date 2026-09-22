@@ -70,22 +70,26 @@ jobs:
           enable-cache: true
           cache-dependency-glob: packages/${{ matrix.package }}/requirements*.txt
 
+      # A real venv, exactly like `npm run setup` does locally. `--system` has
+      # no interpreter to install into on a bare runner.
       - name: Install dependencies
         if: matrix.changed == 'true'
         working-directory: packages/${{ matrix.package }}
-        run: uv pip install --system -r requirements-dev.txt
+        run: |
+          uv venv .venv --python 3.12
+          uv pip install --python .venv/bin/python -r requirements-dev.txt
 
       - name: Lint
         if: matrix.changed == 'true'
         working-directory: packages/${{ matrix.package }}
         run: |
-          ruff check .
-          ruff format --check .
+          .venv/bin/ruff check .
+          .venv/bin/ruff format --check .
 
       - name: Test
         if: matrix.changed == 'true'
         working-directory: packages/${{ matrix.package }}
-        run: python -m pytest
+        run: .venv/bin/python -m pytest
 
   # --- Web -------------------------------------------------------------------
 
@@ -101,10 +105,22 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+
+      # Run inside the package, NOT via the root scripts. The root `lint`/`test`
+      # delegate to scripts/dev.sh, which requires the Python venv this job
+      # deliberately does not have.
+      - name: Typecheck
+        working-directory: packages/web
+        run: npm run typecheck
+      - name: Lint
+        working-directory: packages/web
+        run: npm run lint
+      - name: Test
+        working-directory: packages/web
+        run: npm test
+      - name: Build
+        working-directory: packages/web
+        run: npm run build
 
   # --- Build and push --------------------------------------------------------
 
