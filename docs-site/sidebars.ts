@@ -7,6 +7,7 @@ import type { SidebarsConfig } from '@docusaurus/plugin-content-docs'
 const sidebars: SidebarsConfig = {
   tutorial: [
     'index',
+    'runsheet',
     {
       type: 'category',
       label: 'Get it running',

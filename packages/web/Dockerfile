@@ -21,7 +21,14 @@ RUN npm run build --workspace pulse-web
 
 FROM nginx:1.27-alpine
 
-COPY packages/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY packages/web/nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Defaults are the in-cluster Service names; Container Apps overrides them
+# with the internal FQDNs of the API apps.
+ENV POLL_SERVICE_URL=http://poll-service
+ENV QA_SERVICE_URL=http://qa-service
+ENV POLL_SERVICE_HOST=poll-service
+ENV QA_SERVICE_HOST=qa-service
 COPY --from=builder /build/packages/web/dist /usr/share/nginx/html
 
 EXPOSE 8080
