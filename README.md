@@ -20,7 +20,25 @@ Material from the **Build Smarter with Agentic Engineering** session. Start here
 | **The live-build spec** — what the agent implemented on stage | [`docs/specs/qa-feature.md`](docs/specs/qa-feature.md) |
 | **Design decisions** — every trade-off, with its cost | [`docs/decisions.md`](docs/decisions.md) |
 
-**Reproduce the whole thing in one command:**
+### Live deployment
+
+The session ran on Azure Container Apps. While that deployment is up, these work with no
+setup at all — just open them:
+
+| | |
+| --- | --- |
+| **Tutorial site** | https://pulse-docs.victoriouscliff-b6c1062a.centralindia.azurecontainerapps.io/docs/ |
+| **Audience** (vote from your phone) | https://pulse-web.victoriouscliff-b6c1062a.centralindia.azurecontainerapps.io/r/CIT22A |
+| **Presenter** (QR + live chart) | https://pulse-web.victoriouscliff-b6c1062a.centralindia.azurecontainerapps.io/present/CIT22A |
+| **Admin** (create rooms and polls) | https://pulse-web.victoriouscliff-b6c1062a.centralindia.azurecontainerapps.io/admin |
+
+The presenter and admin screens ask for a token, which is not published here — ask the
+session facilitator if you need it. The audience view needs nothing.
+
+> These URLs are a temporary demo deployment and will be taken down. If they are unreachable,
+> run it locally instead — that path is permanent and takes one command.
+
+**Reproduce the whole thing locally:**
 
 ```bash
 git clone https://github.com/Naveen-oops/pulse && cd pulse && npm run setup
