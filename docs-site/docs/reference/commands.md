@@ -6,7 +6,7 @@ description: The full list. All of it runs from the repo root.
 # Every command
 
 Everything runs from the repo root. All of it dispatches to one file,
-[`scripts/dev.sh`](https://github.com/Naveen-oops/Pulse/blob/main/scripts/dev.sh), through a
+[`scripts/dev.sh`](https://github.com/Naveen-oops/pulse/blob/main/scripts/dev.sh), through a
 small Node launcher that resolves the right bash on any OS.
 
 ```bash

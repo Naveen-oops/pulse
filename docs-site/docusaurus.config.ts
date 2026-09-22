@@ -6,7 +6,7 @@ import { themes as prismThemes } from 'prism-react-renderer'
 // configurable. Locally it stays at the root.
 const baseUrl = process.env.DOCS_BASE_URL ?? '/'
 const organizationName = process.env.GITHUB_OWNER ?? 'Naveen-oops'
-const projectName = 'Pulse'
+const projectName = 'pulse'
 
 const config: Config = {
   title: 'Build Smarter',

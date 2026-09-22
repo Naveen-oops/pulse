@@ -29,7 +29,7 @@ Note which arrow is missing: there is no arrow from a laptop to the cluster.
 # deploy/argocd/app.yaml
 spec:
   source:
-    repoURL: https://github.com/Naveen-oops/Pulse.git
+    repoURL: https://github.com/Naveen-oops/pulse.git
     targetRevision: main
     path: deploy/overlays/demo
 

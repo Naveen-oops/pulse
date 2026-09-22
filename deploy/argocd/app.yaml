@@ -20,7 +20,7 @@ spec:
   source:
     # Replace with your repo URL — `npm run cluster:up` fills this from
     # `git remote get-url origin` when a remote exists.
-    repoURL: https://github.com/Naveen-oops/Pulse.git
+    repoURL: https://github.com/Naveen-oops/pulse.git
     targetRevision: main
     path: deploy/overlays/local
 

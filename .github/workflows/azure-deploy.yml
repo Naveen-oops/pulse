@@ -17,7 +17,7 @@ name: Deploy to AKS
 #   az ad app federated-credential create --id "$OBJ" --parameters '{
 #     "name": "pulse-main",
 #     "issuer": "https://token.actions.githubusercontent.com",
-#     "subject": "repo:Naveen-oops/Pulse:ref:refs/heads/main",
+#     "subject": "repo:Naveen-oops/pulse:ref:refs/heads/main",
 #     "audiences": ["api://AzureADTokenExchange"]
 #   }'
 #
