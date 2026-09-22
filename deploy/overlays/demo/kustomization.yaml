@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: pulse
 
 resources:
-  - ../../base
+- ../../base
 
 # The `images:` block below is written by CI, not by hand:
 #
@@ -30,10 +30,20 @@ resources:
 # ArgoCD will not prune them: they are not in the repo, so it never sees them.
 
 patches:
-  - target:
-      kind: ConfigMap
-      name: pulse-config
-    patch: |-
-      - op: replace
-        path: /data/cors-origins
-        value: "*"
+- patch: |-
+    - op: replace
+      path: /data/cors-origins
+      value: "*"
+  target:
+    kind: ConfigMap
+    name: pulse-config
+images:
+- name: pulse/poll-service
+  newName: ghcr.io/Naveen-oops/pulse-poll-service
+  newTag: 412701e59d918383ff6ca0de3d1adbac50c45376
+- name: pulse/qa-service
+  newName: ghcr.io/Naveen-oops/pulse-qa-service
+  newTag: 412701e59d918383ff6ca0de3d1adbac50c45376
+- name: pulse/web
+  newName: ghcr.io/Naveen-oops/pulse-web
+  newTag: 412701e59d918383ff6ca0de3d1adbac50c45376
