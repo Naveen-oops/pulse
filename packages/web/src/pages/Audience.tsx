@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { ApiError, castVote, getResults, getRoom, type Poll, type Results } from '../api'
+import { AudienceQa } from '../components/AudienceQa'
 import { BarChart } from '../components/BarChart'
 import { getDeviceId, getVotedOption, markVoted } from '../device'
 import { usePolling } from '../hooks/usePolling'
@@ -9,37 +10,59 @@ import { usePolling } from '../hooks/usePolling'
 export function Audience() {
   const { code = '' } = useParams<{ code: string }>()
   const { data: room, error, loading } = usePolling(() => getRoom(code), 2000, code !== '')
+  const [tab, setTab] = useState<'poll' | 'ask'>('poll')
 
   if (loading && room === null) {
     return <p className="muted">Loading room {code.toUpperCase()}…</p>
   }
 
-  if (error !== null && room === null) {
-    return (
-      <div className="card">
-        <h1>Room {code.toUpperCase()}</h1>
-        <p className="error">{error}</p>
-      </div>
-    )
-  }
-
   const openPoll = room?.polls.find((poll) => poll.is_open) ?? null
+  const roomCode = room?.code ?? code.toUpperCase()
 
   return (
     <div className="audience">
       <header className="audience__header">
-        <span className="pill">{room?.code ?? code.toUpperCase()}</span>
+        <span className="pill">{roomCode}</span>
         <h1>{room?.title ?? 'Pulse'}</h1>
       </header>
 
-      {openPoll === null ? (
-        <div className="card card--waiting">
-          <p className="waiting-dot" aria-hidden="true" />
-          <p>Waiting for the presenter to open a poll…</p>
-        </div>
+      <div className="tabs" role="tablist" aria-label="Room views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'poll'}
+          className={tab === 'poll' ? 'chip chip--on' : 'chip'}
+          onClick={() => setTab('poll')}
+        >
+          Poll
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'ask'}
+          className={tab === 'ask' ? 'chip chip--on' : 'chip'}
+          onClick={() => setTab('ask')}
+        >
+          Ask
+        </button>
+      </div>
+
+      {tab === 'poll' ? (
+        error !== null && room === null ? (
+          <div className="card">
+            <p className="error">{error}</p>
+          </div>
+        ) : openPoll === null ? (
+          <div className="card card--waiting">
+            <p className="waiting-dot" aria-hidden="true" />
+            <p>Waiting for the presenter to open a poll…</p>
+          </div>
+        ) : (
+          // Keyed by poll id so switching polls resets the vote state.
+          <AudiencePoll key={openPoll.id} poll={openPoll} />
+        )
       ) : (
-        // Keyed by poll id so switching polls resets the vote state.
-        <AudiencePoll key={openPoll.id} poll={openPoll} />
+        <AudienceQa code={roomCode} />
       )}
     </div>
   )

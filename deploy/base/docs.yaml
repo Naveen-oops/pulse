@@ -1,0 +1,59 @@
+# The tutorial site, deployed beside the app so participants read the docs
+# from the same URL they are voting on.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docs
+  labels:
+    app.kubernetes.io/name: docs
+    app.kubernetes.io/part-of: pulse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: docs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: docs
+        app.kubernetes.io/part-of: pulse
+    spec:
+      containers:
+        - name: docs
+          image: pulse/docs
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docs
+  labels:
+    app.kubernetes.io/name: docs
+    app.kubernetes.io/part-of: pulse
+spec:
+  selector:
+    app.kubernetes.io/name: docs
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

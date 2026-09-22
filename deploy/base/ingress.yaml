@@ -31,6 +31,13 @@ spec:
                 name: qa-service
                 port:
                   name: http
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: docs
+                port:
+                  name: http
           - path: /
             pathType: Prefix
             backend:

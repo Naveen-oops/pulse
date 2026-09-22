@@ -1,6 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, castVote, createRoom, getResults, getRoom, setPollOpen } from './api'
+import {
+  ApiError,
+  castVote,
+  createRoom,
+  getResults,
+  getRoom,
+  listQuestions,
+  postQuestion,
+  setPollOpen,
+  updateQuestion,
+  upvoteQuestion,
+} from './api'
 
 function mockResponse(body: unknown, status = 200): Response {
   return {
@@ -47,6 +58,34 @@ describe('request paths', () => {
     })
   })
 
+  it('lists questions on the qa prefix', async () => {
+    fetchMock.mockResolvedValue(mockResponse([]))
+    await listQuestions('CIT22A')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/qa/rooms/CIT22A/questions')
+  })
+
+  it('posts a question with text and device id', async () => {
+    fetchMock.mockResolvedValue(mockResponse({ id: 1 }, 201))
+    await postQuestion('CIT22A', 'How does polling work here?', 'device-xyz')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/qa/rooms/CIT22A/questions')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({
+      text: 'How does polling work here?',
+      device_id: 'device-xyz',
+    })
+  })
+
+  it('posts an upvote with the device id', async () => {
+    fetchMock.mockResolvedValue(mockResponse({ vote_count: 1 }, 201))
+    await upvoteQuestion(4, 'device-xyz')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/qa/questions/4/votes')
+    expect(JSON.parse(String(init.body))).toEqual({ device_id: 'device-xyz' })
+  })
+
   it('reads results without a presenter token', async () => {
     fetchMock.mockResolvedValue(mockResponse({ counts: [] }))
     await getResults(3)
@@ -84,6 +123,17 @@ describe('presenter-only calls', () => {
     expect(url).toBe('/api/polls/polls/5')
     expect(init.method).toBe('PATCH')
     expect(JSON.parse(String(init.body))).toEqual({ is_open: true })
+  })
+
+  it('sends the presenter token when hiding a question', async () => {
+    fetchMock.mockResolvedValue(mockResponse({}))
+    await updateQuestion(9, { is_hidden: true }, 'secret-token')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/qa/questions/9')
+    expect(init.method).toBe('PATCH')
+    expect(init.headers).toMatchObject({ 'X-Presenter-Token': 'secret-token' })
+    expect(JSON.parse(String(init.body))).toEqual({ is_hidden: true })
   })
 })
 

@@ -42,3 +42,6 @@ Thumbs.db
 packages/crew/output/
 packages/crew/export.json
 tunnel-url.txt
+
+# Editor/agent scratch
+.pr-body.md

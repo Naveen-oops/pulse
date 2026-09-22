@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 
 import { getResults, getRoom, setPollOpen } from '../api'
 import { BarChart } from '../components/BarChart'
+import { PresenterQa } from '../components/PresenterQa'
 import { getPresenterToken, setPresenterToken } from '../device'
 import { usePolling } from '../hooks/usePolling'
 
@@ -71,6 +72,8 @@ export function Presenter() {
           ))}
         </div>
       </main>
+
+      <PresenterQa code={room?.code ?? code.toUpperCase()} token={token} />
     </div>
   )
 }

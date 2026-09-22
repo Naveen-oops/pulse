@@ -7,6 +7,43 @@ Built as the teaching artifact for the **Build Smarter with Agentic Engineering*
 session. The Q&A feature is deliberately *not* built — it is written live on stage by a
 coding agent from [`docs/specs/qa-feature.md`](docs/specs/qa-feature.md).
 
+## Session resources
+
+Material from the **Build Smarter with Agentic Engineering** session. Start here.
+
+| Resource | Where |
+| --- | --- |
+| **Tutorial** — setup, architecture, Kubernetes, CI/CD, agentic engineering | [`docs-site/`](docs-site/docs) — run `cd docs-site && npm start` |
+| **Run sheet** — how the session was delivered, beat by beat | [`docs-site/docs/runsheet.md`](docs-site/docs/runsheet.md) |
+| **Participant assessment** — 10 MCQs with answer key | [`docs/assessment/`](docs/assessment) |
+| **Agent rules** — what a coding agent must follow here | [`AGENTS.md`](AGENTS.md) |
+| **The live-build spec** — what the agent implemented on stage | [`docs/specs/qa-feature.md`](docs/specs/qa-feature.md) |
+| **Design decisions** — every trade-off, with its cost | [`docs/decisions.md`](docs/decisions.md) |
+
+**Reproduce the whole thing in one command:**
+
+```bash
+git clone https://github.com/Naveen-oops/pulse && cd pulse && npm run setup
+```
+
+No prior Python, Docker or Kubernetes knowledge required — setup fetches its own toolchain
+and leaves your system Python untouched.
+
+### The path through the material
+
+1. **[Set up and tour the app](docs-site/docs/setup.md)** — get it running, vote from your phone
+2. **[Why it is built this way](docs-site/docs/concepts/polling.md)** — four decisions with real
+   trade-offs, including two that look wrong until you hear the reason
+3. **[Ship it](docs-site/docs/kubernetes/containers.md)** — containers, a local cluster, and a
+   commit that deploys itself
+4. **[Agentic engineering](docs-site/docs/agentic/rules.md)** — constrain the agent, write the
+   spec, build the feature, then **review what it actually wrote**
+
+Step 4 is the point. Writing code stopped being the bottleneck; knowing whether the code is
+right is the durable skill.
+
+---
+
 ## Quick start
 
 ```bash

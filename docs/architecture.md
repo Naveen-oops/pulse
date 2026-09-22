@@ -112,13 +112,19 @@ Room  ──1:N──▶  Poll  ──1:N──▶  Vote
  title          options[]        device_id
  created_at     is_open          created_at
                 created_at       UNIQUE(poll_id, device_id)
+
+Question  ──1:N──▶  QuestionVote     (qa schema, keyed by room_code string)
+ text               device_id
+ device_id          UNIQUE(question_id, device_id)
+ is_hidden
+ is_answered
 ```
 
 Room codes are six characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — `0/O` and `1/I`
 are excluded so the code is readable from the back row.
 
-The Q&A entities (`Question`, `QuestionVote`) are deliberately **not** modelled here.
-They are built live from [`docs/specs/qa-feature.md`](specs/qa-feature.md).
+Q&A details live in [`docs/specs/qa-feature.md`](specs/qa-feature.md). `qa-service` does
+not read the `rooms` table.
 
 ## Request flow: one vote
 

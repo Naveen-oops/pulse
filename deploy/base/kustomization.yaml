@@ -9,6 +9,7 @@ resources:
   - poll-service.yaml
   - qa-service.yaml
   - web.yaml
+  - docs.yaml
   - ingress.yaml
 
 commonLabels:

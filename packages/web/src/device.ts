@@ -60,3 +60,46 @@ export function getVotedOption(pollId: number): number | null {
     return null
   }
 }
+
+const ASKED_KEY = 'pulse.asked'
+const UPVOTED_KEY = 'pulse.upvoted'
+
+function readIdSet(key: string): Set<number> {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return new Set()
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.filter((value): value is number => typeof value === 'number'))
+  } catch {
+    return new Set()
+  }
+}
+
+function writeIdSet(key: string, ids: Set<number>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify([...ids]))
+  } catch {
+    /* the API is still the source of truth */
+  }
+}
+
+export function markQuestionAsked(questionId: number): void {
+  const ids = readIdSet(ASKED_KEY)
+  ids.add(questionId)
+  writeIdSet(ASKED_KEY, ids)
+}
+
+export function isOwnQuestion(questionId: number): boolean {
+  return readIdSet(ASKED_KEY).has(questionId)
+}
+
+export function markQuestionUpvoted(questionId: number): void {
+  const ids = readIdSet(UPVOTED_KEY)
+  ids.add(questionId)
+  writeIdSet(UPVOTED_KEY, ids)
+}
+
+export function hasUpvotedQuestion(questionId: number): boolean {
+  return readIdSet(UPVOTED_KEY).has(questionId)
+}

@@ -1,0 +1,63 @@
+# Rendered at container start by nginx's entrypoint (envsubst on
+# /etc/nginx/templates/*.template). Only real environment variables are
+# substituted, so nginx's own $uri and $host survive untouched.
+#
+# In Kubernetes the ingress routes /api/* before it ever reaches here, so these
+# proxy blocks are inert. In Container Apps there is no ingress, so nginx IS
+# the router. One image, both topologies.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type application/json;
+        return 200 '{"status":"ok","service":"web"}';
+    }
+
+    location /api/polls {
+        proxy_pass ${POLL_SERVICE_URL};
+        # Container Apps internal ingress is HTTPS and routes by SNI + Host,
+        # so both must name the upstream, not this app.
+        # nginx proxies with HTTP/1.0 by default; Container Apps ingress
+        # requires 1.1 and answers 426 Upgrade Required otherwise.
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${POLL_SERVICE_HOST};
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/qa {
+        proxy_pass ${QA_SERVICE_URL};
+        # Container Apps internal ingress is HTTPS and routes by SNI + Host,
+        # so both must name the upstream, not this app.
+        # nginx proxies with HTTP/1.0 by default; Container Apps ingress
+        # requires 1.1 and answers 426 Upgrade Required otherwise.
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${QA_SERVICE_HOST};
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+}
