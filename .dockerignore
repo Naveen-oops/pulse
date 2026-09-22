@@ -1,0 +1,36 @@
+# Applies to builds that use the repo root as context (currently packages/web).
+# The Python services build from their own directory and use their own
+# .dockerignore.
+
+.git/
+.github/
+.venv/
+node_modules/
+**/node_modules/
+**/dist/
+**/coverage/
+**/.vite/
+
+# Secrets must never enter a build context.
+.env
+.env.*
+!.env.example
+secrets/
+kubeconfig
+*.kubeconfig
+*.pem
+*.key
+
+# Python artefacts — irrelevant to the web build.
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.db
+
+docs/
+deploy/
+scripts/
+packages/poll-service/
+packages/qa-service/
+packages/crew/

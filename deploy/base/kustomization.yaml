@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulse
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - poll-service.yaml
+  - qa-service.yaml
+  - web.yaml
+  - ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: pulse
+
+configMapGenerator:
+  - name: pulse-config
+    literals:
+      # Same-origin through the ingress, so the browser never sends a
+      # cross-origin request. Overlays widen this when a tunnel is in play.
+      - cors-origins=http://localhost,http://localhost:8080
+
+generatorOptions:
+  # Stable names: ArgoCD should see a ConfigMap update, not a new object every sync.
+  disableNameSuffixHash: true

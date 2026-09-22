@@ -1,0 +1,50 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulse
+
+resources:
+  - ../../base
+
+# Images are built locally and pushed into the kind node with
+# `kind load docker-image`, so no registry is needed for the local demo.
+# A `:dev` tag (not `:latest`) means Kubernetes defaults to IfNotPresent and
+# will not try to pull from Docker Hub.
+images:
+  - name: pulse/poll-service
+    newTag: dev
+  - name: pulse/qa-service
+    newTag: dev
+  - name: pulse/web
+    newTag: dev
+
+# LOCAL DEMO CREDENTIALS ONLY.
+# These are deliberately in git: the cluster is a throwaway kind cluster on a
+# laptop and the values match .env.example. The cloud overlay reads its secrets
+# from the platform instead — never copy this pattern there.
+secretGenerator:
+  - name: pulse-db
+    literals:
+      - username=pulse
+      - password=pulse
+      - poll-service-url=postgresql://pulse:pulse@postgres:5432/pulse
+      - qa-service-url=postgresql://pulse:pulse@postgres:5432/pulse
+  - name: pulse-app
+    literals:
+      - presenter-token=demo-presenter-token
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  # A Cloudflare quick tunnel serves the app from a random *.trycloudflare.com
+  # host, so the browser's origin is not localhost. Same-origin requests through
+  # the ingress still work, but keep CORS permissive locally so a phone opening
+  # the tunnel URL is never blocked.
+  - target:
+      kind: ConfigMap
+      name: pulse-config
+    patch: |-
+      - op: replace
+        path: /data/cors-origins
+        value: "*"

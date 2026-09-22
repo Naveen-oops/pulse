@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulse
+
+resources:
+  - ../../base
+
+# The `images:` block below is written by CI, not by hand:
+#
+#   kustomize edit set image pulse/poll-service=ghcr.io/<owner>/pulse-poll-service:<sha>
+#
+# CI commits that change, ArgoCD sees the commit, and the pod rolls. That commit
+# IS the deploy — this is the GitOps hinge the session demonstrates.
+#
+# It starts empty on purpose: the first CI run fills in the real owner and SHA,
+# so there is no placeholder to get stale.
+
+# Secrets come from the cluster, NOT from git. Create them once:
+#
+#   kubectl -n pulse create secret generic pulse-db \
+#     --from-literal=username=pulse \
+#     --from-literal=password='<strong-password>' \
+#     --from-literal=poll-service-url='postgresql://pulse:<pw>@postgres:5432/pulse' \
+#     --from-literal=qa-service-url='postgresql://pulse:<pw>@postgres:5432/pulse'
+#
+#   kubectl -n pulse create secret generic pulse-app \
+#     --from-literal=presenter-token='<strong-token>'
+#
+# ArgoCD will not prune them: they are not in the repo, so it never sees them.
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: pulse-config
+    patch: |-
+      - op: replace
+        path: /data/cors-origins
+        value: "*"

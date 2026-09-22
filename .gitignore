@@ -34,8 +34,11 @@ Thumbs.db
 .idea/
 *.swp
 
+# Downloaded tool binaries (kind, etc.)
+.tools/
+
 # Runtime output
 *.log
-crew/output/
-crew/export.json
+packages/crew/output/
+packages/crew/export.json
 tunnel-url.txt

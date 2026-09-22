@@ -1,0 +1,218 @@
+name: CI
+
+# Path-filtered: a change to one package tests and builds only that package.
+# Target is merge -> running pod in under 4 minutes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      poll-service: ${{ steps.filter.outputs.poll-service }}
+      qa-service: ${{ steps.filter.outputs.qa-service }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            poll-service:
+              - 'packages/poll-service/**'
+              - '.github/workflows/ci.yml'
+            qa-service:
+              - 'packages/qa-service/**'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'packages/web/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+
+  # --- Python services -------------------------------------------------------
+
+  test-python:
+    name: test ${{ matrix.package }}
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: poll-service
+            changed: ${{ needs.changes.outputs.poll-service }}
+          - package: qa-service
+            changed: ${{ needs.changes.outputs.qa-service }}
+    steps:
+      - uses: actions/checkout@v4
+        if: matrix.changed == 'true'
+
+      - name: Install uv
+        if: matrix.changed == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: packages/${{ matrix.package }}/requirements*.txt
+
+      - name: Install dependencies
+        if: matrix.changed == 'true'
+        working-directory: packages/${{ matrix.package }}
+        run: uv pip install --system -r requirements-dev.txt
+
+      - name: Lint
+        if: matrix.changed == 'true'
+        working-directory: packages/${{ matrix.package }}
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        if: matrix.changed == 'true'
+        working-directory: packages/${{ matrix.package }}
+        run: python -m pytest
+
+  # --- Web -------------------------------------------------------------------
+
+  test-web:
+    name: test web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  # --- Build and push --------------------------------------------------------
+
+  build:
+    name: build ${{ matrix.package }}
+    needs: [changes, test-python, test-web]
+    # Only on main, and only if nothing upstream failed. `always()` lets the job
+    # run when a sibling test job was skipped by its path filter.
+    if: |
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: poll-service
+            context: packages/poll-service
+            dockerfile: packages/poll-service/Dockerfile
+            changed: ${{ needs.changes.outputs.poll-service }}
+          - package: qa-service
+            context: packages/qa-service
+            dockerfile: packages/qa-service/Dockerfile
+            changed: ${{ needs.changes.outputs.qa-service }}
+          # web builds from the repo root: the npm workspace lockfile lives there.
+          - package: web
+            context: .
+            dockerfile: packages/web/Dockerfile
+            changed: ${{ needs.changes.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+        if: matrix.changed == 'true'
+
+      - uses: docker/setup-buildx-action@v3
+        if: matrix.changed == 'true'
+
+      - name: Log in to GHCR
+        if: matrix.changed == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        if: matrix.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pulse-${{ matrix.package }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pulse-${{ matrix.package }}:latest
+          # Registry cache keeps rebuilds inside the 4-minute budget.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # --- GitOps: the commit that deploys --------------------------------------
+
+  bump-tags:
+    name: bump image tags
+    needs: [changes, build]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use a PAT here instead if you need this commit to trigger other
+          # workflows — GITHUB_TOKEN commits deliberately do not.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Kustomize
+        run: |
+          curl -sfLo kustomize.tar.gz \
+            https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz
+          tar -xzf kustomize.tar.gz
+          sudo install -m 0755 kustomize /usr/local/bin/kustomize
+
+      - name: Point the demo overlay at the new images
+        working-directory: deploy/overlays/demo
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for pkg in poll-service qa-service web; do
+            kustomize edit set image \
+              "pulse/${pkg}=${REGISTRY}/${OWNER}/pulse-${pkg}:${SHA}"
+          done
+          cat kustomization.yaml
+
+      - name: Commit the deploy
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No image change to commit."
+            exit 0
+          fi
+          git add deploy/overlays/demo/kustomization.yaml
+          git commit -m "deploy: ${GITHUB_SHA::7} [skip ci]"
+          git push

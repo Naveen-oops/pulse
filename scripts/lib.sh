@@ -105,6 +105,44 @@ require_node_modules() {
    👉 Run: npm run setup"
 }
 
+# Local tool downloads live in .tools/ so nothing touches the system PATH.
+TOOLS_DIR="$REPO_ROOT/.tools"
+KIND_VERSION="v0.30.0"
+
+find_kind() {
+  if command -v kind >/dev/null 2>&1; then command -v kind; return 0; fi
+  if [ -x "$TOOLS_DIR/kind.exe" ]; then echo "$TOOLS_DIR/kind.exe"; return 0; fi
+  if [ -x "$TOOLS_DIR/kind" ]; then echo "$TOOLS_DIR/kind"; return 0; fi
+  return 1
+}
+
+install_kind() {
+  mkdir -p "$TOOLS_DIR"
+  local os arch target url
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) os=windows; target="$TOOLS_DIR/kind.exe" ;;
+    Darwin)               os=darwin;  target="$TOOLS_DIR/kind" ;;
+    *)                    os=linux;   target="$TOOLS_DIR/kind" ;;
+  esac
+  case "$(uname -m)" in
+    arm64|aarch64) arch=arm64 ;;
+    *)             arch=amd64 ;;
+  esac
+  url="https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-${os}-${arch}"
+  curl -fsSLo "$target" "$url" || return 1
+  chmod +x "$target"
+  echo "$target"
+}
+
+require_kind() {
+  local kind_bin
+  if kind_bin="$(find_kind)"; then echo "$kind_bin"; return 0; fi
+  warn "kind not found — downloading ${KIND_VERSION} into .tools/" >&2
+  kind_bin="$(install_kind)" || die "Could not download kind.
+   👉 https://kind.sigs.k8s.io/docs/user/quick-start/#installation"
+  echo "$kind_bin"
+}
+
 docker_up() { docker info >/dev/null 2>&1; }
 
 port_busy() {

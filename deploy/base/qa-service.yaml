@@ -1,0 +1,80 @@
+# Deployed on main as a hello-world: /healthz only.
+# Its Dockerfile, CI job, manifest and ingress route all exist already, so the
+# live build on stage writes feature logic and nothing else.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qa-service
+  labels:
+    app.kubernetes.io/name: qa-service
+    app.kubernetes.io/part-of: pulse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: qa-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qa-service
+        app.kubernetes.io/part-of: pulse
+    spec:
+      containers:
+        - name: qa-service
+          image: pulse/qa-service
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: QA_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-db
+                  key: qa-service-url
+            - name: QA_DB_SCHEMA
+              value: qa
+            - name: PULSE_PRESENTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-app
+                  key: presenter-token
+            - name: QA_API_PREFIX
+              value: /api/qa
+            - name: PULSE_CORS_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: pulse-config
+                  key: cors-origins
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 25m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qa-service
+  labels:
+    app.kubernetes.io/name: qa-service
+    app.kubernetes.io/part-of: pulse
+spec:
+  selector:
+    app.kubernetes.io/name: qa-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -2,7 +2,7 @@
   "name": "pulse",
   "private": true,
   "version": "1.0.0",
-  "description": "Pulse — live audience app (polls, Q&A, CrewAI session report)",
+  "description": "Pulse \u2014 live audience app (polls, Q&A, CrewAI session report)",
   "type": "module",
   "workspaces": [
     "packages/web"
@@ -12,20 +12,24 @@
   },
   "scripts": {
     "setup": "node scripts/run.mjs setup",
-
     "dev": "concurrently -n poll,qa,web -c blue,magenta,green -k \"npm:poll-service\" \"npm:qa-service\" \"npm:web\"",
     "web": "node scripts/run.mjs web",
     "poll-service": "node scripts/run.mjs poll-service",
     "qa-service": "node scripts/run.mjs qa-service",
     "crew": "node scripts/run.mjs crew",
-
     "db:up": "node scripts/run.mjs db up",
     "db:down": "node scripts/run.mjs db down",
     "db:reset": "node scripts/run.mjs db reset",
     "db:status": "node scripts/run.mjs db status",
     "seed": "node scripts/run.mjs seed",
     "seed:reset": "node scripts/run.mjs seed --reset",
-
+    "cluster:up": "node scripts/run.mjs cluster up",
+    "cluster:down": "node scripts/run.mjs cluster down",
+    "cluster:argocd": "node scripts/run.mjs cluster argocd",
+    "cluster:status": "node scripts/run.mjs cluster status",
+    "cluster:seed": "node scripts/run.mjs cluster seed",
+    "images": "node scripts/run.mjs images",
+    "tunnel": "node scripts/run.mjs tunnel",
     "test": "node scripts/run.mjs test",
     "test:py": "node scripts/run.mjs test python",
     "test:web": "node scripts/run.mjs test web",
@@ -34,7 +38,6 @@
     "typecheck": "npm run typecheck -w pulse-web",
     "verify": "node scripts/run.mjs verify",
     "build": "npm run build -w pulse-web",
-
     "doctor": "node scripts/run.mjs doctor",
     "clean": "node scripts/run.mjs clean",
     "help": "node scripts/run.mjs help"

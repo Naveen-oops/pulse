@@ -1,0 +1,54 @@
+# The GitOps hinge: ArgoCD watches this repo and applies deploy/overlays/local.
+#
+# Live demo flow:
+#   merge PR -> CI builds and pushes the image -> CI commits the new tag into
+#   deploy/ -> ArgoCD sees the commit -> pod rolls. Nobody runs kubectl.
+#
+# Apply once per cluster:
+#   kubectl apply -f deploy/argocd/app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pulse
+  namespace: argocd
+  finalizers:
+    # Deleting the Application also removes what it created.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # Replace with your repo URL — `npm run cluster:up` fills this from
+    # `git remote get-url origin` when a remote exists.
+    repoURL: https://github.com/OWNER/Pulse.git
+    targetRevision: main
+    path: deploy/overlays/local
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pulse
+
+  syncPolicy:
+    automated:
+      # Revert anything changed by hand in the cluster — the repo is the truth.
+      selfHeal: true
+      # Remove objects deleted from the repo.
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      # Wait for the namespace before applying objects into it.
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m
+
+  # The PVC's bound volume and capacity are set by the cluster, not the repo.
+  ignoreDifferences:
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec/volumeName
+        - /spec/resources/requests/storage

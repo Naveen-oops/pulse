@@ -282,6 +282,197 @@ cmd_verify() {
 }
 
 # ============================================================================
+#  kubernetes — local kind cluster, ingress, ArgoCD
+# ============================================================================
+
+KIND_CLUSTER="pulse"
+# Pinned: the manifest path has moved on main before, and an unpinned URL
+# turns an upstream restructure into a broken demo.
+INGRESS_NGINX_VERSION="controller-v1.13.1"
+INGRESS_HTTP_PORT="${PULSE_INGRESS_PORT:-18080}"
+
+cmd_images() {
+  docker_up || die "Docker is not running."
+  step "🐳 Building images"
+  run docker build -q -t pulse/poll-service:dev packages/poll-service
+  run docker build -q -t pulse/qa-service:dev packages/qa-service
+  # web builds from the repo root: the npm workspace lockfile lives there.
+  run docker build -q -f packages/web/Dockerfile -t pulse/web:dev .
+  ok "poll-service, qa-service and web built"
+
+  local kind_bin; kind_bin="$(require_kind)"
+  if "$kind_bin" get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER"; then
+    step "📦 Loading images into the kind node"
+    info "No registry needed locally — images go straight into the node"
+    for image in poll-service qa-service web; do
+      run "$kind_bin" load docker-image "pulse/${image}:dev" --name "$KIND_CLUSTER"
+    done
+    ok "images available in the cluster"
+  fi
+}
+
+cmd_cluster() {
+  local action="${1:-status}"
+  local kind_bin; kind_bin="$(require_kind)"
+
+  case "$action" in
+    up)
+      banner "☸️  Bringing up the local cluster"
+      docker_up || die "Docker is not running."
+
+      step "🔍 Checking kind"
+      ok "kind $("$kind_bin" version | head -1)"
+
+      if "$kind_bin" get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER"; then
+        ok "cluster '$KIND_CLUSTER' already exists"
+      else
+        port_busy "$INGRESS_HTTP_PORT" \
+          && die "Port $INGRESS_HTTP_PORT is in use, and the cluster needs it for ingress.
+   👉 Stop whatever is listening, then retry."
+        step "☸️  Creating the cluster"
+        info "This pulls the node image the first time — a minute or two"
+        run "$kind_bin" create cluster --config deploy/local/kind-cluster.yaml
+        ok "cluster '$KIND_CLUSTER' created"
+      fi
+
+      run kubectl config use-context "kind-${KIND_CLUSTER}"
+
+      step "🌐 Installing ingress-nginx"
+      info "kind ships no ingress controller, so we add one"
+      run kubectl apply -f \
+        "https://raw.githubusercontent.com/kubernetes/ingress-nginx/${INGRESS_NGINX_VERSION}/deploy/static/provider/kind/deploy.yaml"
+      printf '   %s⏳ waiting for the controller to be ready%s\n' "$DIM" "$RESET"
+      kubectl wait --namespace ingress-nginx \
+        --for=condition=ready pod \
+        --selector=app.kubernetes.io/component=controller \
+        --timeout=180s || die "ingress-nginx did not become ready.
+   👉 kubectl -n ingress-nginx get pods"
+      ok "ingress-nginx ready"
+
+      cmd_images
+
+      step "🚀 Applying deploy/overlays/local"
+      run kubectl apply -k deploy/overlays/local
+      printf '   %s⏳ waiting for rollouts%s\n' "$DIM" "$RESET"
+      for deployment in postgres poll-service qa-service web; do
+        kubectl -n pulse rollout status "deployment/$deployment" --timeout=180s \
+          || die "$deployment did not roll out.
+   👉 kubectl -n pulse describe deployment/$deployment"
+      done
+      ok "all four deployments are running"
+
+      step "🌱 Seeding room CIT22A in the cluster"
+      kubectl -n pulse exec deployment/poll-service -- python -m app.seed \
+        2>/dev/null | sed 's/^/   🌱 /' || warn "Seeding failed — run 'npm run cluster:seed' once Postgres settles"
+
+      done_banner "Cluster is up."
+      cat <<EOF
+  ${BOLD}Open${RESET}
+    ${DIM}audience ${RESET} http://localhost:${INGRESS_HTTP_PORT}/r/CIT22A
+    ${DIM}presenter${RESET} http://localhost:${INGRESS_HTTP_PORT}/present/CIT22A
+    ${DIM}admin    ${RESET} http://localhost:${INGRESS_HTTP_PORT}/admin
+
+  ${BOLD}Next${RESET}
+    ${CYAN}npm run cluster:argocd${RESET}   install ArgoCD and the Application
+    ${CYAN}npm run tunnel${RESET}           public HTTPS URL for phones
+
+EOF
+      ;;
+
+    argocd)
+      banner "🐙 Installing ArgoCD"
+      step "📦 Applying the ArgoCD manifests"
+      run kubectl create namespace argocd --dry-run=client -o yaml
+      kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+      # --server-side is required: a client-side apply stores the whole manifest
+      # in last-applied-configuration, and the ApplicationSet CRD exceeds the
+      # 256KB annotation limit.
+      run kubectl apply -n argocd --server-side --force-conflicts -f \
+        https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      printf '   %s⏳ waiting for the ArgoCD server%s\n' "$DIM" "$RESET"
+      kubectl -n argocd rollout status deployment/argocd-server --timeout=300s \
+        || die "ArgoCD did not start.
+   👉 kubectl -n argocd get pods"
+      ok "ArgoCD is running"
+
+      step "🔗 Pointing the Application at this repo"
+      local remote
+      if remote="$(git remote get-url origin 2>/dev/null)"; then
+        ok "remote: $remote"
+        info "Edit deploy/argocd/app.yaml if the URL or overlay path differs"
+      else
+        warn "No git remote yet — ArgoCD cannot sync from a repo that is not pushed"
+        hint "Create the GitHub repo, push, then: npm run cluster:argocd"
+        hint "The app is already running from 'npm run cluster:up' meanwhile"
+        return 0
+      fi
+      # Substitute the real repo URL at apply time, so the committed manifest
+      # never carries a stale placeholder.
+      info "Applying the Application with repoURL=$remote"
+      sed "s|https://github.com/OWNER/Pulse.git|${remote}|" deploy/argocd/app.yaml         | kubectl apply -f -
+
+      step "🔑 Admin password"
+      printf '   %s' "$DIM"
+      kubectl -n argocd get secret argocd-initial-admin-secret \
+        -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true
+      printf '%s\n' "$RESET"
+      info "Username is 'admin'. Port-forward the UI with:"
+      note "kubectl -n argocd port-forward svc/argocd-server 8090:443"
+      done_banner "ArgoCD ready."
+      ;;
+
+    down)
+      banner "🧨 Deleting the cluster"
+      run "$kind_bin" delete cluster --name "$KIND_CLUSTER"
+      ok "cluster '$KIND_CLUSTER' deleted"
+      ;;
+
+    seed)
+      step "🌱 Seeding room CIT22A in the cluster"
+      kubectl -n pulse exec deployment/poll-service -- python -m app.seed "${@:2}" \
+        | sed 's/^/   🌱 /'
+      ok "seeded"
+      ;;
+
+    status)
+      banner "☸️  Cluster status"
+      if ! "$kind_bin" get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER"; then
+        info "No cluster named '$KIND_CLUSTER'"
+        hint "npm run cluster:up"
+        return 0
+      fi
+      step "Pods"; kubectl -n pulse get pods -o wide 2>&1 || true
+      step "Ingress"; kubectl -n pulse get ingress 2>&1 || true
+      step "ArgoCD"; kubectl -n argocd get application 2>&1 || info "ArgoCD not installed"
+      ;;
+
+    logs)
+      kubectl -n pulse logs -l "app.kubernetes.io/name=${2:-poll-service}" --tail=100 -f
+      ;;
+
+    *)
+      die "Usage: npm run cluster:up | cluster:down | cluster:argocd | cluster:status
+   also: dev.sh cluster seed | dev.sh cluster logs <service>"
+      ;;
+  esac
+}
+
+cmd_tunnel() {
+  banner "🌍 Public HTTPS URL for phones"
+  local target="http://localhost:${INGRESS_HTTP_PORT}"
+  if ! command -v cloudflared >/dev/null 2>&1; then
+    warn "cloudflared is not installed"
+    hint "winget install --id Cloudflare.cloudflared -e --source winget"
+    hint "or: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+    die "Install cloudflared, then run 'npm run tunnel' again."
+  fi
+  info "Serving $target over a Cloudflare quick tunnel"
+  info "The *.trycloudflare.com URL it prints is what the QR code should point at"
+  warn "Quick tunnels are ephemeral — the URL changes every restart"
+  exec cloudflared tunnel --url "$target"
+}
+
+# ============================================================================
 #  utilities
 # ============================================================================
 
@@ -393,6 +584,14 @@ cmd_help() {
     npm run seed             seed room CIT22A
     npm run seed:reset       seed and clear all votes
 
+  ${BOLD}Kubernetes${RESET}
+    npm run cluster:up       kind cluster + ingress-nginx + deploy + seed
+    npm run cluster:argocd   install ArgoCD and the Application
+    npm run cluster:status   pods, ingress, ArgoCD app
+    npm run cluster:down     delete the cluster
+    npm run images           build images and load them into kind
+    npm run tunnel           public HTTPS URL for phones
+
   ${BOLD}Quality${RESET}
     npm test                 all tests        (test:py, test:web)
     npm run lint             ruff + eslint
@@ -419,6 +618,9 @@ case "$COMMAND" in
   qa-service|qa)        cmd_qa_service "$@" ;;
   crew)                 cmd_crew "$@" ;;
   db)                   cmd_db "$@" ;;
+  cluster)              cmd_cluster "$@" ;;
+  images)               cmd_images "$@" ;;
+  tunnel)               cmd_tunnel "$@" ;;
   seed)                 cmd_seed "$@" ;;
   test)                 cmd_test "$@" ;;
   lint)                 cmd_lint "$@" ;;
