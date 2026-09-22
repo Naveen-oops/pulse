@@ -40,10 +40,10 @@ patches:
 images:
 - name: pulse/poll-service
   newName: ghcr.io/naveen-oops/pulse-poll-service
-  newTag: 4ac8583cf1cec89572ab5546ca324dc3c0a31b01
+  newTag: bec91c9b86703289835a70b300830ebbc8b67510
 - name: pulse/qa-service
   newName: ghcr.io/naveen-oops/pulse-qa-service
-  newTag: 4ac8583cf1cec89572ab5546ca324dc3c0a31b01
+  newTag: bec91c9b86703289835a70b300830ebbc8b67510
 - name: pulse/web
   newName: ghcr.io/naveen-oops/pulse-web
-  newTag: 4ac8583cf1cec89572ab5546ca324dc3c0a31b01
+  newTag: bec91c9b86703289835a70b300830ebbc8b67510
