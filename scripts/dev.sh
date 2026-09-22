@@ -534,7 +534,7 @@ cmd_azure() {
       info "Everything goes in one resource group. 'npm run azure:down' deletes all of it."
 
       step "📋 Registering resource providers"
-      for provider in Microsoft.ContainerService Microsoft.ContainerRegistry; do
+      for provider in Microsoft.Compute Microsoft.Network Microsoft.ContainerService Microsoft.ContainerRegistry Microsoft.OperationalInsights; do
         local state
         state="$("$AZ" provider show -n "$provider" --query registrationState -o tsv 2>/dev/null || echo NotRegistered)"
         if [ "$state" = "Registered" ]; then
@@ -560,15 +560,29 @@ cmd_azure() {
         ok "$ACR.azurecr.io"
       fi
 
-      step "🐳 Building images in the cloud"
-      info "az acr build compiles inside Azure — no local Docker push, no slow upload"
-      "$AZ" acr build -r "$ACR" -t "pulse-poll-service:latest" packages/poll-service --output none
-      ok "pulse-poll-service"
-      "$AZ" acr build -r "$ACR" -t "pulse-qa-service:latest" packages/qa-service --output none
-      ok "pulse-qa-service"
-      # web builds from the repo root: the npm workspace lockfile lives there.
-      "$AZ" acr build -r "$ACR" -t "pulse-web:latest" -f packages/web/Dockerfile . --output none
-      ok "pulse-web"
+      step "🐳 Building and pushing images"
+      # `az acr build` (ACR Tasks) is blocked on free/trial subscriptions with
+      # TasksOperationsNotAllowed, so images are built locally and pushed.
+      docker_up || die "Docker is not running, and it is needed to build the images."
+      info "Authenticating Docker to the registry"
+      "$AZ" acr login -n "$ACR" >/dev/null || die "az acr login failed for $ACR"
+
+      local registry="${ACR}.azurecr.io"
+      for spec in "poll-service:packages/poll-service:"                   "qa-service:packages/qa-service:"                   "web:.:packages/web/Dockerfile"; do
+        local name ctx dockerfile
+        name="${spec%%:*}"
+        ctx="$(echo "$spec" | cut -d: -f2)"
+        dockerfile="$(echo "$spec" | cut -d: -f3)"
+
+        local image="${registry}/pulse-${name}:latest"
+        if [ -n "$dockerfile" ]; then
+          run docker build -q -f "$dockerfile" -t "$image" "$ctx"
+        else
+          run docker build -q -t "$image" "$ctx"
+        fi
+        run docker push -q "$image"
+        ok "pulse-${name} pushed"
+      done
 
       step "☸️  Creating the AKS cluster"
       if "$AZ" aks show -n "$AZ_AKS_NAME" -g "$AZ_RESOURCE_GROUP" >/dev/null 2>&1; then

@@ -1,0 +1,261 @@
+name: Deploy to AKS
+
+# Manual, not on every push. A cloud deploy costs money and the cluster only
+# needs to exist around a session, so this is deliberately a button you press.
+#
+# ─── One-time setup ──────────────────────────────────────────────────────────
+#
+# Uses OIDC federated credentials, so there is NO client secret in GitHub.
+# GitHub presents a short-lived token that Azure trusts for this repo only.
+#
+#   SUB=$(az account show --query id -o tsv)
+#   APP_ID=$(az ad app create --display-name pulse-gh-deploy --query appId -o tsv)
+#   az ad sp create --id "$APP_ID"
+#   OBJ=$(az ad app show --id "$APP_ID" --query id -o tsv)
+#
+#   # Trust this repo's main branch
+#   az ad app federated-credential create --id "$OBJ" --parameters '{
+#     "name": "pulse-main",
+#     "issuer": "https://token.actions.githubusercontent.com",
+#     "subject": "repo:Naveen-oops/Pulse:ref:refs/heads/main",
+#     "audiences": ["api://AzureADTokenExchange"]
+#   }'
+#
+#   # Contributor on the resource group only — not the whole subscription
+#   az role assignment create --assignee "$APP_ID" --role Contributor \
+#     --scope "/subscriptions/$SUB/resourceGroups/rg-pulse-demo"
+#
+# Then add three repository *variables* (Settings > Secrets and variables >
+# Actions > Variables). None of these are secrets — OIDC carries the trust:
+#   AZURE_CLIENT_ID        the APP_ID above
+#   AZURE_TENANT_ID        az account show --query tenantId -o tsv
+#   AZURE_SUBSCRIPTION_ID  the SUB above
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy        # build, push, apply manifests
+          - provision     # create ACR + AKS first, then deploy
+          - teardown      # delete the resource group
+      seed:
+        description: Reseed room CIT22A after deploying
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+
+env:
+  RESOURCE_GROUP: rg-pulse-demo
+  LOCATION: centralindia
+  AKS_NAME: pulse-aks
+  NODE_SIZE: Standard_B2s
+  NODE_COUNT: '1'
+
+concurrency:
+  # Never let two cloud deploys race each other.
+  group: azure-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # --- teardown exits early -------------------------------------------
+      - name: Teardown
+        if: inputs.action == 'teardown'
+        run: |
+          set -euo pipefail
+          echo "Deleting resource group $RESOURCE_GROUP"
+          az group delete -n "$RESOURCE_GROUP" --yes --no-wait
+          echo "Deletion started. Azure finishes it in the background."
+
+      - name: Resolve registry name
+        if: inputs.action != 'teardown'
+        id: acr
+        run: |
+          set -euo pipefail
+          # Same derivation as scripts/dev.sh: globally unique, alphanumeric.
+          SUB="${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          NAME="pulseacr$(echo "$SUB" | tr -d '-' | tail -c 8)"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Registry: $NAME.azurecr.io"
+
+      # --- provision creates the infrastructure ---------------------------
+      - name: Provision ACR and AKS
+        if: inputs.action == 'provision'
+        env:
+          ACR: ${{ steps.acr.outputs.name }}
+        run: |
+          set -euo pipefail
+
+          for p in Microsoft.Compute Microsoft.Network \
+                   Microsoft.ContainerService Microsoft.ContainerRegistry \
+                   Microsoft.OperationalInsights; do
+            az provider register -n "$p" --wait
+          done
+
+          az group create -n "$RESOURCE_GROUP" -l "$LOCATION" -o none
+
+          az acr show -n "$ACR" -g "$RESOURCE_GROUP" -o none 2>/dev/null \
+            || az acr create -n "$ACR" -g "$RESOURCE_GROUP" --sku Basic -o none
+
+          if ! az aks show -n "$AKS_NAME" -g "$RESOURCE_GROUP" -o none 2>/dev/null; then
+            # Free trial subscriptions cap regional vCPUs at 4, so one small
+            # node is the safe default.
+            az aks create \
+              -n "$AKS_NAME" -g "$RESOURCE_GROUP" \
+              --tier free \
+              --node-count "$NODE_COUNT" \
+              --node-vm-size "$NODE_SIZE" \
+              --attach-acr "$ACR" \
+              --no-ssh-key \
+              -o none
+          fi
+
+      # --- build and push --------------------------------------------------
+      - name: Build and push images
+        if: inputs.action != 'teardown'
+        env:
+          ACR: ${{ steps.acr.outputs.name }}
+        run: |
+          set -euo pipefail
+          # ACR Tasks (az acr build) is blocked on free/trial subscriptions, so
+          # the runner builds and pushes instead. It has Docker already.
+          az acr login -n "$ACR"
+          REG="$ACR.azurecr.io"
+          SHA="${GITHUB_SHA::7}"
+
+          docker build -t "$REG/pulse-poll-service:$SHA" -t "$REG/pulse-poll-service:latest" \
+            packages/poll-service
+          docker build -t "$REG/pulse-qa-service:$SHA" -t "$REG/pulse-qa-service:latest" \
+            packages/qa-service
+          # web builds from the repo root: the workspace lockfile lives there.
+          docker build -f packages/web/Dockerfile \
+            -t "$REG/pulse-web:$SHA" -t "$REG/pulse-web:latest" .
+
+          docker push --all-tags "$REG/pulse-poll-service"
+          docker push --all-tags "$REG/pulse-qa-service"
+          docker push --all-tags "$REG/pulse-web"
+
+      - name: Get kubectl credentials
+        if: inputs.action != 'teardown'
+        run: az aks get-credentials -n "$AKS_NAME" -g "$RESOURCE_GROUP" --overwrite-existing
+
+      - name: Install ingress-nginx
+        if: inputs.action == 'provision'
+        run: |
+          set -euo pipefail
+          kubectl apply -f \
+            https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.13.1/deploy/static/provider/cloud/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=300s
+
+      - name: Create secrets if absent
+        if: inputs.action != 'teardown'
+        run: |
+          set -euo pipefail
+          kubectl create namespace pulse --dry-run=client -o yaml | kubectl apply -f -
+
+          if kubectl -n pulse get secret pulse-db >/dev/null 2>&1; then
+            echo "Secrets already exist; leaving them alone."
+          else
+            PG_PASS="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
+            TOKEN="$(openssl rand -hex 16)"
+            kubectl -n pulse create secret generic pulse-db \
+              --from-literal=username=pulse \
+              --from-literal=password="$PG_PASS" \
+              --from-literal=poll-service-url="postgresql://pulse:${PG_PASS}@postgres:5432/pulse" \
+              --from-literal=qa-service-url="postgresql://pulse:${PG_PASS}@postgres:5432/pulse"
+            kubectl -n pulse create secret generic pulse-app \
+              --from-literal=presenter-token="$TOKEN"
+            echo "::notice::Generated new secrets. Read the presenter token with: kubectl -n pulse get secret pulse-app -o jsonpath='{.data.presenter-token}' | base64 -d"
+          fi
+
+      - name: Deploy
+        if: inputs.action != 'teardown'
+        env:
+          ACR: ${{ steps.acr.outputs.name }}
+        run: |
+          set -euo pipefail
+          REG="$ACR.azurecr.io"
+          SHA="${GITHUB_SHA::7}"
+
+          # Pin the overlay to this commit's images. An immutable tag means a
+          # rollback is a real rollback.
+          cd deploy/overlays/azure
+          sed -i '/^images:/,$d' kustomization.yaml
+          cat >> kustomization.yaml <<EOF
+
+          images:
+            - name: pulse/poll-service
+              newName: ${REG}/pulse-poll-service
+              newTag: ${SHA}
+            - name: pulse/qa-service
+              newName: ${REG}/pulse-qa-service
+              newTag: ${SHA}
+            - name: pulse/web
+              newName: ${REG}/pulse-web
+              newTag: ${SHA}
+          EOF
+          cd - >/dev/null
+
+          kubectl apply -k deploy/overlays/azure
+
+          for d in postgres poll-service qa-service web; do
+            kubectl -n pulse rollout status "deployment/$d" --timeout=300s
+          done
+
+      - name: Seed room CIT22A
+        if: inputs.action != 'teardown' && inputs.seed
+        run: kubectl -n pulse exec deployment/poll-service -- python -m app.seed --reset
+
+      - name: Report the public URL
+        if: inputs.action != 'teardown'
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            IP="$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+            [ -n "$IP" ] && break
+            sleep 10
+          done
+
+          if [ -z "${IP:-}" ]; then
+            echo "::warning::LoadBalancer has no external IP yet."
+            exit 0
+          fi
+
+          {
+            echo "## Pulse is live"
+            echo
+            echo "| Screen | URL |"
+            echo "| --- | --- |"
+            echo "| **Audience** | http://$IP/r/CIT22A |"
+            echo "| Presenter | http://$IP/present/CIT22A |"
+            echo "| Admin | http://$IP/admin |"
+            echo
+            echo "Tear down with this workflow, action \`teardown\`."
+          } >> "$GITHUB_STEP_SUMMARY"
